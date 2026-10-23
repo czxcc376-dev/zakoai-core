@@ -238,7 +238,10 @@ pub fn score(text: &str) -> u32 {
     if folded.matches("```").count() >= 2 {
         total = total.saturating_add(1);
     }
-    if CODE_TASK_MARKERS.iter().any(|marker| folded.contains(marker)) {
+    if CODE_TASK_MARKERS
+        .iter()
+        .any(|marker| folded.contains(marker))
+    {
         total = total.saturating_add(CODE_TASK_BONUS);
     }
     total.min(SCORE_CAP)
@@ -531,7 +534,10 @@ mod tests {
         // 真实测量里被判 off 的那句
         let text = "帮我写个 Python 脚本，把 CSV 转成 JSON，注意报错处理";
         let score = score(text);
-        assert!(score >= 2, "普通写代码请求应至少进 frame，实测 score={score}");
+        assert!(
+            score >= 2,
+            "普通写代码请求应至少进 frame，实测 score={score}"
+        );
         assert!(score < 8, "但不该直接吃全文，实测 score={score}");
     }
 
