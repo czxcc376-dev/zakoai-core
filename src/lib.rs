@@ -2,8 +2,8 @@ pub mod api;
 pub mod inject;
 pub mod network;
 pub mod profiles;
-pub mod refusal;
 pub mod proxy;
+pub mod refusal;
 pub mod store;
 pub mod update;
 
