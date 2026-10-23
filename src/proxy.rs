@@ -820,6 +820,8 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
                         observer.feed(&chunk);
                         log.entry.usage = observer.usage.clone();
                         log.entry.cyber = observer.cyber;
+            log.entry.refused = observer.guard.refused();
+                        log.entry.refused = observer.guard.refused();
                         if observer.content_seen && log.entry.first_token_ms.is_none() {
                             log.entry.first_token_ms = Some(log.started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64);
                         }
@@ -895,6 +897,51 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         log.set_error("Upstream request failed; no successful account attempt");
     }
     error(StatusCode::BAD_GATEWAY, "Upstream request failed")
+}
+
+/// 从一次上游事件里抽出所有「正文文本」片段，供拒绝检测累积。
+///
+/// 覆盖三种协议：chat(choices[].delta/message.content)、
+/// responses(output_text.delta / output[].content[].text)、
+/// anthropic(content_block_delta.delta.text)。
+fn response_texts(value: &Value) -> Vec<String> {
+    let mut texts = Vec::new();
+    if let Some(choices) = value.get("choices").and_then(Value::as_array) {
+        for choice in choices {
+            for field in ["delta", "message"] {
+                if let Some(content) = choice.get(field).and_then(|m| m.get("content")) {
+                    match content {
+                        Value::String(text) => texts.push(text.clone()),
+                        Value::Array(blocks) => {
+                            for block in blocks {
+                                if let Some(text) = block.get("text").and_then(Value::as_str) {
+                                    texts.push(text.to_owned());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    if let Some(delta) = value.get("delta") {
+        if let Some(text) = delta.get("text").and_then(Value::as_str) {
+            texts.push(text.to_owned());
+        }
+    }
+    if let Some(output) = value.get("output").and_then(Value::as_array) {
+        for item in output {
+            if let Some(blocks) = item.get("content").and_then(Value::as_array) {
+                for block in blocks {
+                    if let Some(text) = block.get("text").and_then(Value::as_str) {
+                        texts.push(text.to_owned());
+                    }
+                }
+            }
+        }
+    }
+    texts
 }
 
 fn has_content_delta(value: &Value, event_name: &str) -> bool {
@@ -1004,6 +1051,7 @@ struct Observer {
     json_oversized: bool,
     marker: Vec<u8>,
     cyber: bool,
+    guard: crate::refusal::Detector,
     usage: Usage,
     completed: bool,
     failed: bool,
@@ -1027,6 +1075,7 @@ impl Observer {
             json_oversized: false,
             marker: Vec::new(),
             cyber: false,
+            guard: crate::refusal::Detector::new(),
             usage: Usage::default(),
             completed: false,
             failed: false,
@@ -1131,6 +1180,10 @@ impl Observer {
                 .max(usage.cache_read_input_tokens);
             if self.sse && has_content_delta(&value, event_name) {
                 self.content_seen = true;
+            }
+            // 拒绝检测：把正文增量喂给检测器（只保留开头一段）
+            for text in response_texts(&value) {
+                self.guard.feed(&text);
             }
             if let Some(message) = response_error(&value, event_name, self.http_error) {
                 self.error = Some(error_summary(&message, &self.secrets));

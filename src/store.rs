@@ -243,6 +243,9 @@ pub struct RequestLog {
     pub first_token_ms: Option<u64>,
     pub usage: Usage,
     pub cyber: bool,
+    /// 本轮回复被判定为「推辞/拒绝」。这是破甲是否生效的核心指标。
+    #[serde(default)]
+    pub refused: bool,
     pub attempts: u32,
     #[serde(default)]
     pub request_path: String,

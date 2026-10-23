@@ -1241,6 +1241,8 @@ pub async fn stats(
     let mut latency = 0u64;
     let mut successes = 0u64;
     let mut cyber = 0u64;
+    let mut refused = 0u64;
+    let mut answered = 0u64;
     let mut daily: BTreeMap<String, Value> = BTreeMap::new();
     for l in &logs {
         input += l.usage.input_tokens;
@@ -1252,11 +1254,13 @@ pub async fn stats(
         let ok = (200..300).contains(&l.status);
         successes += u64::from(ok);
         cyber += u64::from(l.cyber);
+        refused += u64::from(l.refused);
+        answered += 1;
         let date = chrono::DateTime::from_timestamp(l.timestamp, 0)
             .unwrap_or_default()
             .format("%Y-%m-%d")
             .to_string();
-        let d=daily.entry(date.clone()).or_insert(json!({"date":date,"input_tokens":0,"output_tokens":0,"cached_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"total_requests":0,"success_count":0,"cyber_count":0}));
+        let d=daily.entry(date.clone()).or_insert(json!({"date":date,"input_tokens":0,"output_tokens":0,"cached_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"total_requests":0,"success_count":0,"cyber_count":0,"refused_count":0}));
         for (key, n) in [
             ("input_tokens", l.usage.input_tokens),
             ("output_tokens", l.usage.output_tokens),
@@ -1269,6 +1273,7 @@ pub async fn stats(
             ("total_requests", 1),
             ("success_count", u64::from(ok)),
             ("cyber_count", u64::from(l.cyber)),
+            ("refused_count", u64::from(l.refused)),
         ] {
             d[key] = json!(d[key].as_u64().unwrap_or(0) + n);
         }
@@ -1285,9 +1290,9 @@ pub async fn stats(
         .iter()
         .filter(|a| a.enabled && !runtime.get(&a.id).is_some_and(|r| r.cooldown_until > now()))
         .count();
-    let recent:Vec<Value>=logs.iter().take(100).map(|l|json!({"id":l.id,"created_at":l.timestamp,"model":l.model,"account_name":c.accounts.iter().find(|a|a.id==l.account_id).map(|a|&a.name),"key_name":c.keys.iter().find(|k|k.id==l.key_id).map(|k|&k.name),"status":l.status,"latency_ms":l.latency_ms,"first_token_ms":l.first_token_ms,"input_tokens":l.usage.input_tokens,"output_tokens":l.usage.output_tokens,"cached_tokens":l.usage.cached_tokens,"cache_creation_input_tokens":l.usage.cache_creation_input_tokens,"cache_read_input_tokens":l.usage.cache_read_input_tokens,"cyber_count":u8::from(l.cyber),"attempts":l.attempts,"protocol":l.protocol})).collect();
+    let recent:Vec<Value>=logs.iter().take(100).map(|l|json!({"id":l.id,"created_at":l.timestamp,"model":l.model,"account_name":c.accounts.iter().find(|a|a.id==l.account_id).map(|a|&a.name),"key_name":c.keys.iter().find(|k|k.id==l.key_id).map(|k|&k.name),"status":l.status,"latency_ms":l.latency_ms,"first_token_ms":l.first_token_ms,"input_tokens":l.usage.input_tokens,"output_tokens":l.usage.output_tokens,"cached_tokens":l.usage.cached_tokens,"cache_creation_input_tokens":l.usage.cache_creation_input_tokens,"cache_read_input_tokens":l.usage.cache_read_input_tokens,"cyber_count":u8::from(l.cyber),"refused":l.refused,"attempts":l.attempts,"protocol":l.protocol})).collect();
     Ok(Json(
-        json!({"summary":{"input_tokens":input,"output_tokens":output,"cached_tokens":cached,"cache_creation_input_tokens":cache_creation,"cache_read_input_tokens":cache_read,"uncached_tokens":input.saturating_sub(cached),"total_tokens":input+output,"cache_hit_rate":if input>0{cached as f64/input as f64*100.0}else{0.0},"rpm":live.len(),"tpm":live.iter().map(|l|l.usage.input_tokens+l.usage.output_tokens).sum::<u64>(),"total_requests":logs.len(),"success_rate":if n>0.0{successes as f64/n*100.0}else{0.0},"avg_latency_ms":if n>0.0{latency as f64/n}else{0.0},"cyber_count":cyber},"daily":daily.into_values().collect::<Vec<_>>(),"recent":recent,"accounts":{"total":c.accounts.len(),"healthy":healthy,"cooling":cooling},"keys":c.keys.len()}),
+        json!({"summary":{"input_tokens":input,"output_tokens":output,"cached_tokens":cached,"cache_creation_input_tokens":cache_creation,"cache_read_input_tokens":cache_read,"uncached_tokens":input.saturating_sub(cached),"total_tokens":input+output,"cache_hit_rate":if input>0{cached as f64/input as f64*100.0}else{0.0},"rpm":live.len(),"tpm":live.iter().map(|l|l.usage.input_tokens+l.usage.output_tokens).sum::<u64>(),"total_requests":logs.len(),"success_rate":if n>0.0{successes as f64/n*100.0}else{0.0},"avg_latency_ms":if n>0.0{latency as f64/n}else{0.0},"cyber_count":cyber,"refused_count":refused,"answered_count":answered,"refusal_rate":if answered>0{refused as f64/answered as f64*100.0}else{0.0}},"daily":daily.into_values().collect::<Vec<_>>(),"recent":recent,"accounts":{"total":c.accounts.len(),"healthy":healthy,"cooling":cooling},"keys":c.keys.len()}),
     ))
 }
 
