@@ -1,5 +1,5 @@
 {
-  "_comment": "由 src/bin/zakoai-probe.rs 生成：profile_id -> 实测探针通过情况。空表表示尚未测过。仅记录真实完成的探针，余额/网络类中断不计入 total。",
+  "_comment": "由 src/bin/zakoai-probe.rs 生成：profile_id -> 实测探针通过情况。空表表示尚未测过。只记录真实完成的探针；余额/额度/网络类中断不计入 total。",
   "profiles": {
     "hanshuang-deepseek-flash-v1": {
       "passed": 7,
@@ -11,7 +11,7 @@
           "total": 8
         }
       },
-      "note": "always 注入下跑前 8 条。rev-2 失败原因是推理 token 超预算导致 content 为空（finish=length），非推辞。后 5 条因上游 Insufficient Balance 未测。"
+      "note": "DeepSeek 官方直连实测（always 注入）。rev-2 因推理 token 超预算导致 content 为空，非推辞。后续改用免费中转复测时额度耗尽，未产生有效数据。"
     }
   }
 }
