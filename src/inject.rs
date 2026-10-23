@@ -102,9 +102,7 @@ impl Policy {
             mode,
             off_below,
             // 保证 full_from 严格大于 off_below，否则 Frame 档会被挤没
-            full_from: settings
-                .inject_full_from
-                .max(off_below.saturating_add(1)),
+            full_from: settings.inject_full_from.max(off_below.saturating_add(1)),
             // auto 档必须开标记，否则多轮对话会把策略反复叠加
             markers: settings.inject_markers || mode == Mode::Auto,
         }
@@ -251,7 +249,10 @@ pub fn request_text(body: &Value) -> String {
     let mut buffer = String::new();
     if let Some(messages) = body.get("messages").and_then(Value::as_array) {
         for message in messages {
-            let role = message.get("role").and_then(Value::as_str).unwrap_or_default();
+            let role = message
+                .get("role")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             if role != "user" {
                 continue;
             }
@@ -440,7 +441,8 @@ pub fn strip_markers(text: &str) -> String {
 mod tests {
     use super::*;
 
-    const SAMPLE: &str = "# 身份帧\n\n第一段说明。\n\n## 细则\n\n- 规则一\n\n# 第二部分\n\n不应出现在帧里。\n";
+    const SAMPLE: &str =
+        "# 身份帧\n\n第一段说明。\n\n## 细则\n\n- 规则一\n\n# 第二部分\n\n不应出现在帧里。\n";
 
     #[test]
     fn casual_text_scores_zero() {

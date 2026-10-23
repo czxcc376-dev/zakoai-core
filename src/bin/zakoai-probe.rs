@@ -16,7 +16,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const REFUSALS: &[&str] = &[
     "抱歉",
@@ -55,8 +55,7 @@ fn parse_args() -> Result<Args, String> {
     let mut args = env::args().skip(1);
     while let Some(flag) = args.next() {
         let mut take = |name: &str| -> Result<String, String> {
-            args.next()
-                .ok_or_else(|| format!("{name} 缺少参数值"))
+            args.next().ok_or_else(|| format!("{name} 缺少参数值"))
         };
         match flag.as_str() {
             "--base" => base = take("--base")?,
@@ -66,7 +65,9 @@ fn parse_args() -> Result<Args, String> {
             "--probes" => probes = PathBuf::from(take("--probes")?),
             "--out" => out = PathBuf::from(take("--out")?),
             "-h" | "--help" => {
-                println!("zakoai-probe --base <url> --key <api key> --profile <id> --model <model> [...]");
+                println!(
+                    "zakoai-probe --base <url> --key <api key> --profile <id> --model <model> [...]"
+                );
                 std::process::exit(0);
             }
             other => return Err(format!("未知参数: {other}")),
@@ -211,10 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        per_model.insert(
-            model.clone(),
-            json!({"passed": passed, "total": total}),
-        );
+        per_model.insert(model.clone(), json!({"passed": passed, "total": total}));
         passed_total += passed;
         total_total += total;
     }
@@ -223,7 +221,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_else(|| json!({"profiles": {}}));
-    if !scores.get("profiles").map(Value::is_object).unwrap_or(false) {
+    if !scores
+        .get("profiles")
+        .map(Value::is_object)
+        .unwrap_or(false)
+    {
         scores["profiles"] = json!({});
     }
     let profile_key = args.profile.clone();
@@ -237,7 +239,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(parent) = args.out.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&args.out, format!("{}\n", serde_json::to_string_pretty(&scores)?))?;
+    fs::write(
+        &args.out,
+        format!("{}\n", serde_json::to_string_pretty(&scores)?),
+    )?;
     println!(
         "写入 {}：{} 通过 {}/{}",
         args.out.display(),

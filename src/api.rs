@@ -900,9 +900,15 @@ pub async fn save_settings(
         )
         .as_str()
         .to_owned(),
-        inject_off_below: input.inject_off_below.unwrap_or(current_settings.inject_off_below),
-        inject_full_from: input.inject_full_from.unwrap_or(current_settings.inject_full_from),
-        inject_markers: input.inject_markers.unwrap_or(current_settings.inject_markers),
+        inject_off_below: input
+            .inject_off_below
+            .unwrap_or(current_settings.inject_off_below),
+        inject_full_from: input
+            .inject_full_from
+            .unwrap_or(current_settings.inject_full_from),
+        inject_markers: input
+            .inject_markers
+            .unwrap_or(current_settings.inject_markers),
     };
     site_key = site_key.trim().to_owned();
     if let Some(secret) = submitted_secret {
