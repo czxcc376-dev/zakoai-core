@@ -529,8 +529,19 @@ function GroupForm({
                   </label>
                   {details && (
                     <div className="profile-metadata">
-                      {item.metadata?.validation === "unverified" && (
-                        <span className="profile-validation">未实测</span>
+                      {item.score ? (
+                        <span
+                          className="profile-validation verified"
+                          title={`实测 ${item.score.passed}/${item.score.total}${
+                            item.score.tested_at ? ` · ${item.score.tested_at}` : ""
+                          }`}
+                        >
+                          实测 {item.score.passed}/{item.score.total}
+                        </span>
+                      ) : (
+                        item.metadata?.validation === "unverified" && (
+                          <span className="profile-validation">未实测</span>
+                        )
                       )}
                       <span title={`UTF-8 正文：${details.bytes} 字节`}>
                         {(details.bytes / 1024).toFixed(1)} KiB

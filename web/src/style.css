@@ -855,6 +855,7 @@ td strong { font-weight: 700; color: var(--ink); }
 .profile-variant { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .profile-metadata { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding-left: 30px; color: var(--muted); font-size: 11px; line-height: 1.6; font-variant-numeric: tabular-nums; }
 .profile-validation { color: var(--ink); }
+.profile-validation.verified { color: #2f7d5f; font-weight: 600; }
 .profile-metadata a { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; max-width: 100%; color: var(--pink-600); overflow-wrap: anywhere; }
 .profile-metadata a:focus-visible { outline: 2px solid var(--pink-500); outline-offset: 2px; border-radius: 2px; }
 .profile-fieldset:disabled .profile-option { opacity: 0.6; cursor: wait; }

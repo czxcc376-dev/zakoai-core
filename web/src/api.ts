@@ -135,6 +135,11 @@ export type Settings = {
   cooldown_seconds: number;
   request_timeout_seconds: number;
   retention_days: number;
+  /** always | auto | off */
+  inject_mode: string;
+  inject_off_below: number;
+  inject_full_from: number;
+  inject_markers: boolean;
 };
 export type Release = {
   tag: string;
@@ -171,6 +176,13 @@ export type Profile = {
     source_revision: string;
     variant: string;
     validation: string;
+  };
+  /** 实测探针结果，来自 docs/scores.json；未测过则为空 */
+  score?: {
+    passed: number;
+    total: number;
+    tested_at?: string;
+    models?: Record<string, { passed: number; total: number }>;
   };
 };
 export type State = {
