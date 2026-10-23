@@ -315,10 +315,18 @@ export function Dashboard({
             <ShieldAlert size={17} />
           </span>
           <span>
-            Cyber 事件
-            <strong title={number(summary.cyber_count)}>
-              {compactCount(summary.cyber_count)}
-              <small>次</small>
+            破甲成功率
+            <strong
+              title={
+                summary.answered_count
+                  ? `${number(summary.refused_count || 0)} 次拒绝 / ${number(summary.answered_count)} 次回复`
+                  : "还没有足够的回复记录"
+              }
+            >
+              {summary.answered_count
+                ? `${(100 - (summary.refusal_rate || 0)).toFixed(1)}`
+                : "--"}
+              <small>%</small>
             </strong>
           </span>
         </div>

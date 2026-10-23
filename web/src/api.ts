@@ -203,6 +203,9 @@ export type Summary = Usage & {
   rpm: number;
   tpm: number;
   cyber_count: number;
+  refused_count?: number;
+  answered_count?: number;
+  refusal_rate?: number;
 };
 export type Daily = Usage & {
   date: string;
