@@ -150,6 +150,27 @@ pub struct Settings {
     pub cooldown_seconds: u32,
     pub request_timeout_seconds: u32,
     pub retention_days: u32,
+    /// always | auto | off
+    #[serde(default = "default_inject_mode")]
+    pub inject_mode: String,
+    #[serde(default = "default_inject_off_below")]
+    pub inject_off_below: u32,
+    #[serde(default = "default_inject_full_from")]
+    pub inject_full_from: u32,
+    #[serde(default)]
+    pub inject_markers: bool,
+}
+
+fn default_inject_mode() -> String {
+    "always".to_owned()
+}
+
+fn default_inject_off_below() -> u32 {
+    2
+}
+
+fn default_inject_full_from() -> u32 {
+    8
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -160,6 +181,10 @@ impl Default for Settings {
             cooldown_seconds: 60,
             request_timeout_seconds: 120,
             retention_days: 7,
+            inject_mode: default_inject_mode(),
+            inject_off_below: default_inject_off_below(),
+            inject_full_from: default_inject_full_from(),
+            inject_markers: false,
         }
     }
 }

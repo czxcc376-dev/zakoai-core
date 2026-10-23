@@ -1,5 +1,7 @@
 use crate::store::Group;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 const DEEPSEEK_API_ADAPTER: &str = include_str!("../profiles/dsh-purge/api-adapter.md");
@@ -133,6 +135,44 @@ pub(crate) fn legacy_profile(models: &[String], instruction: &str) -> Option<&'s
                     .is_some_and(|previous| instruction == previous)))
             && models.len() == profile.models.len()
             && models.iter().all(|model| profile.models.contains(model))
+    })
+}
+
+/** 选中的 profile（含定义了 instruction 的实体，供注入内核读取 id 与正文）。 */
+pub fn selected(group: &Group, model: &str) -> Option<&'static Profile> {
+    group
+        .profile_ids
+        .iter()
+        .filter_map(|id| find(id))
+        .find(|profile| profile.models.iter().any(|selected| selected == model))
+        .or_else(|| group.default_strategy_enabled.then(default_profile))
+}
+
+/// 默认策略也是一个「profile」，这样注入内核可以统一处理。
+fn default_profile() -> &'static Profile {
+    static PROFILE: OnceLock<Profile> = OnceLock::new();
+    PROFILE.get_or_init(|| Profile {
+        id: "default".to_owned(),
+        name: "Default".to_owned(),
+        models: Vec::new(),
+        instruction: DEFAULT_INSTRUCTION.to_owned(),
+        model_family: String::new(),
+        metadata: None,
+    })
+}
+
+/// 实测分数：随仓库走的 `docs/scores.json`，缺文件时为空表。
+pub fn scores() -> &'static HashMap<String, Value> {
+    static SCORES: OnceLock<HashMap<String, Value>> = OnceLock::new();
+    SCORES.get_or_init(|| {
+        #[derive(Deserialize)]
+        struct Scores {
+            #[serde(default)]
+            profiles: HashMap<String, Value>,
+        }
+        serde_json::from_str::<Scores>(include_str!("../docs/scores.json"))
+            .map(|scores| scores.profiles)
+            .unwrap_or_default()
     })
 }
 

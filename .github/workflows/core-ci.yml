@@ -1,0 +1,48 @@
+name: core-ci
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: core-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: 编译与测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # 云端自动格式化并回写，避免本地没有 rustfmt 时反复因为格式失败
+      - name: 格式化并回写
+        run: |
+          cargo fmt --all
+          if ! git diff --quiet; then
+            git config user.name "zakoai-bot"
+            git config user.email "zakoai-bot@users.noreply.github.com"
+            git add -A
+            git commit -m "style: cargo fmt [skip ci]"
+            git push
+          fi
+
+      - name: cargo check
+        run: cargo check --all-targets --locked
+
+      - name: cargo test
+        run: cargo test --all-targets --locked
+
+      - name: clippy（仅报告，不阻塞）
+        run: cargo clippy --all-targets --locked || true

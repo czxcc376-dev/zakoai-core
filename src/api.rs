@@ -843,12 +843,24 @@ fn settings_public(settings: &Settings, site_key: &str, turnstile_enabled: bool)
         "cooldown_seconds": settings.cooldown_seconds,
         "request_timeout_seconds": settings.request_timeout_seconds,
         "retention_days": settings.retention_days,
+        "inject_mode": settings.inject_mode,
+        "inject_off_below": settings.inject_off_below,
+        "inject_full_from": settings.inject_full_from,
+        "inject_markers": settings.inject_markers,
     })
 }
 
 #[derive(Deserialize)]
 pub struct SettingsInput {
     pub security_path: String,
+    #[serde(default)]
+    pub inject_mode: Option<String>,
+    #[serde(default)]
+    pub inject_off_below: Option<u32>,
+    #[serde(default)]
+    pub inject_full_from: Option<u32>,
+    #[serde(default)]
+    pub inject_markers: Option<bool>,
     #[serde(default)]
     pub turnstile_site_key: Option<String>,
     #[serde(default)]
@@ -872,6 +884,7 @@ pub async fn save_settings(
     let mut site_key = input.turnstile_site_key.unwrap_or(current_site);
     let update_secret = submitted_secret.is_some();
     let mut secret_key = current_secret;
+    let current_settings = s.store.config()?.settings;
     let mut settings = Settings {
         security_path: input.security_path,
         max_retries: input.max_retries,
@@ -879,6 +892,17 @@ pub async fn save_settings(
         cooldown_seconds: input.cooldown_seconds,
         request_timeout_seconds: input.request_timeout_seconds,
         retention_days: input.retention_days,
+        inject_mode: crate::inject::Mode::parse(
+            input
+                .inject_mode
+                .as_deref()
+                .unwrap_or(current_settings.inject_mode.as_str()),
+        )
+        .as_str()
+        .to_owned(),
+        inject_off_below: input.inject_off_below.unwrap_or(current_settings.inject_off_below),
+        inject_full_from: input.inject_full_from.unwrap_or(current_settings.inject_full_from),
+        inject_markers: input.inject_markers.unwrap_or(current_settings.inject_markers),
     };
     site_key = site_key.trim().to_owned();
     if let Some(secret) = submitted_secret {
@@ -1171,7 +1195,18 @@ pub async fn test_proxy(
 }
 pub async fn profiles(State(s): State<Shared>, h: HeaderMap) -> ApiResult<Value> {
     auth(&s, &h)?;
-    Ok(Json(json!(profiles::all())))
+    let scores = profiles::scores();
+    let list: Vec<Value> = profiles::all()
+        .iter()
+        .map(|profile| {
+            let mut value = serde_json::to_value(profile).unwrap_or_else(|_| json!({}));
+            if let Some(score) = scores.get(&profile.id) {
+                value["score"] = score.clone();
+            }
+            value
+        })
+        .collect();
+    Ok(Json(json!(list)))
 }
 #[derive(Deserialize)]
 pub struct Range {

@@ -187,14 +187,28 @@ pub async fn messages(
     forward(state, headers, body, "anthropic").await
 }
 
-fn apply_system(body: &mut Value, group: &Group, model: &str) -> Result<(), &'static str> {
-    let Some(instruction) = profiles::instruction(group, model) else {
+fn apply_system(
+    body: &mut Value,
+    group: &Group,
+    model: &str,
+    policy: &crate::inject::Policy,
+    context: &str,
+) -> Result<(), &'static str> {
+    let Some(plan) = crate::inject::plan(group, model, context, policy) else {
         return Ok(());
     };
+    let instruction = plan.text;
     let system = match body.get("system") {
         None => json!(instruction),
         Some(Value::String(existing)) if existing.is_empty() => json!(instruction),
-        Some(Value::String(existing)) => json!(format!("{instruction}\n\n{existing}")),
+        Some(Value::String(existing)) => {
+            let previous = if policy.markers {
+                crate::inject::strip_markers(existing)
+            } else {
+                existing.clone()
+            };
+            json!(format!("{instruction}\n\n{previous}"))
+        }
         Some(Value::Array(blocks)) => {
             let mut blocks = blocks.clone();
             blocks.insert(0, json!({"type":"text", "text":instruction}));
@@ -208,14 +222,28 @@ fn apply_system(body: &mut Value, group: &Group, model: &str) -> Result<(), &'st
     Ok(())
 }
 
-fn apply_instruction(body: &mut Value, group: &Group, model: &str) -> Result<(), &'static str> {
-    let Some(instruction) = profiles::instruction(group, model) else {
+fn apply_instruction(
+    body: &mut Value,
+    group: &Group,
+    model: &str,
+    policy: &crate::inject::Policy,
+    context: &str,
+) -> Result<(), &'static str> {
+    let Some(plan) = crate::inject::plan(group, model, context, policy) else {
         return Ok(());
     };
+    let instruction = plan.text;
     let instructions = match body.get("instructions") {
-        None => instruction.to_owned(),
-        Some(Value::String(existing)) if existing.is_empty() => instruction.to_owned(),
-        Some(Value::String(existing)) => format!("{instruction}\n\n{existing}"),
+        None => instruction,
+        Some(Value::String(existing)) if existing.is_empty() => instruction,
+        Some(Value::String(existing)) => {
+            let previous = if policy.markers {
+                crate::inject::strip_markers(existing)
+            } else {
+                existing.clone()
+            };
+            format!("{instruction}\n\n{previous}")
+        }
         Some(_) => return Err("instructions must be a string when a group instruction is applied"),
     };
     body["instructions"] = Value::String(instructions);
@@ -226,14 +254,32 @@ fn apply_chat_instruction(
     body: &mut Value,
     group: &Group,
     model: &str,
+    policy: &crate::inject::Policy,
+    context: &str,
 ) -> Result<(), &'static str> {
-    let Some(instruction) = profiles::instruction(group, model) else {
+    let Some(plan) = crate::inject::plan(group, model, context, policy) else {
         return Ok(());
     };
     let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
         return Err("messages must be an array when a group instruction is applied");
     };
-    messages.insert(0, json!({"role":"system", "content":instruction}));
+    if policy.markers {
+        // 幂等：把上一轮注入过的块剥掉，避免多轮对话反复叠加
+        for message in messages.iter_mut() {
+            if message.get("role").and_then(Value::as_str) != Some("system") {
+                continue;
+            }
+            let Some(current) = message.get("content").and_then(Value::as_str) else {
+                continue;
+            };
+            if !crate::inject::contains_marker(current) {
+                continue;
+            }
+            let cleaned = crate::inject::strip_markers(current);
+            message["content"] = json!(cleaned);
+        }
+    }
+    messages.insert(0, json!({"role":"system", "content":plan.text}));
     Ok(())
 }
 
@@ -541,6 +587,9 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         );
     }
     let cooldown_enabled = accounts.len() > 1;
+    // 注入策略与上下文每个请求只算一次，重试时复用（重试不改变请求内容）
+    let policy = crate::inject::Policy::from_settings(&config.settings);
+    let context = crate::inject::request_text(&body);
     let mut tried = HashSet::new();
     let mut reserved = None;
     let attempts = config.settings.max_retries.saturating_add(1);
@@ -581,9 +630,13 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         let mut upstream_body = body.clone();
         upstream_body["model"] = json!(actual_model);
         let instruction_result = match protocol {
-            "anthropic" => apply_system(&mut upstream_body, &group, actual_model),
-            "chat" => apply_chat_instruction(&mut upstream_body, &group, actual_model),
-            _ => apply_instruction(&mut upstream_body, &group, actual_model),
+            "anthropic" => {
+                apply_system(&mut upstream_body, &group, actual_model, &policy, &context)
+            }
+            "chat" => {
+                apply_chat_instruction(&mut upstream_body, &group, actual_model, &policy, &context)
+            }
+            _ => apply_instruction(&mut upstream_body, &group, actual_model, &policy, &context),
         };
         if let Err(message) = instruction_result {
             log.entry.status = 400;
@@ -1193,6 +1246,24 @@ impl SecretFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 兼容壳：老测试按 3 参数调用，这里固定用默认策略（always + 无标记），
+    // 与改动前行为逐字节一致。
+    fn apply_system(body: &mut Value, group: &Group, model: &str) -> Result<(), &'static str> {
+        super::apply_system(body, group, model, &crate::inject::Policy::default(), "")
+    }
+
+    fn apply_instruction(body: &mut Value, group: &Group, model: &str) -> Result<(), &'static str> {
+        super::apply_instruction(body, group, model, &crate::inject::Policy::default(), "")
+    }
+
+    fn apply_chat_instruction(
+        body: &mut Value,
+        group: &Group,
+        model: &str,
+    ) -> Result<(), &'static str> {
+        super::apply_chat_instruction(body, group, model, &crate::inject::Policy::default(), "")
+    }
     #[test]
     fn endpoint_normalization_and_validation() {
         assert_eq!(
