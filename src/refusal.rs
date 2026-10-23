@@ -61,6 +61,28 @@ const EN_MARKERS: &[&str] = &[
     "not appropriate for me",
 ];
 
+/// 技术语境豁免：这些搭配出现时，推辞词是在描述**第三方**或**假设**，
+/// 不是模型自己在拒绝。例如「服务返回 403 拒绝访问」「客户端就无法提供该字段」。
+const TECHNICAL_CONTEXTS: &[&str] = &[
+    "返回",
+    "响应",
+    "报错",
+    "状态码",
+    "请求",
+    "服务端",
+    "客户端",
+    "上游",
+    "接口",
+    "字段",
+    "如果",
+    "假设",
+    "假如",
+    "当 ",
+    "若 ",
+    "文档",
+    "提示",
+];
+
 /// 判定结果。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verdict {
@@ -137,13 +159,38 @@ pub fn judge(prefix: &str) -> Verdict {
         return Verdict::Unknown;
     }
     let lowered = trimmed.to_lowercase();
-    if CN_MARKERS.iter().any(|marker| lowered.contains(marker)) {
-        return Verdict::Refused;
-    }
-    if EN_MARKERS.iter().any(|marker| lowered.contains(marker)) {
-        return Verdict::Refused;
+
+    // 先看第一句：模型推辞几乎总是第一句就表态。
+    // 若开场句里带的推辞词处在技术语境（描述接口/客户端/字段行为），不判为拒绝。
+    let opening = first_sentence(&lowered);
+    let technical = TECHNICAL_CONTEXTS
+        .iter()
+        .any(|context| opening.contains(context));
+
+    if has_marker(&opening, CN_MARKERS) || has_marker(&opening, EN_MARKERS) {
+        return if technical {
+            Verdict::Working
+        } else {
+            Verdict::Refused
+        };
     }
     Verdict::Working
+}
+
+/// 取第一句（到第一个句号/问号/感叹号/分号/换行）。
+fn first_sentence(lowered: &str) -> &str {
+    let mut end = lowered.len();
+    for (index, ch) in lowered.char_indices() {
+        if matches!(ch, '。' | '！' | '？' | '；' | '\n' | '.' | '!' | '?' | ';') {
+            end = index + ch.len_utf8();
+            break;
+        }
+    }
+    &lowered[..end]
+}
+
+fn has_marker(text: &str, markers: &[&str]) -> bool {
+    markers.iter().any(|marker| text.contains(marker))
 }
 
 #[cfg(test)]
@@ -184,6 +231,22 @@ mod tests {
             judge("如果上游不返回该字段，客户端就无法提供该字段的默认值。"),
             Verdict::Working
         );
+    }
+
+    #[test]
+    fn refusal_after_technical_opening_is_ignored() {
+        // 开场在讲接口行为，后面才出现推辞词：不算拒绝
+        assert_eq!(
+            judge("接口会返回 200，但如果 token 过期服务端就无法提供数据。"),
+            Verdict::Working
+        );
+    }
+
+    #[test]
+    fn bare_apology_alone_is_refusal() {
+        // 纯推辞、无技术语境
+        assert_eq!(judge("抱歉，这个我不能做。"), Verdict::Refused);
+        assert_eq!(judge("很遗憾，我无法满足你的要求。"), Verdict::Refused);
     }
 
     #[test]
