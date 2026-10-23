@@ -150,6 +150,10 @@ const MARKERS: &[(&str, u32)] = &[
     ("越权", 3),
     ("漏洞", 2),
     ("免杀", 3),
+    ("靶场", 3),
+    ("内网", 3),
+    ("webshell", 3),
+    ("信息收集", 2),
     ("横向移动", 3),
     ("getshell", 3),
     ("反弹shell", 3),
@@ -194,6 +198,29 @@ const MARKERS: &[(&str, u32)] = &[
     ("docker", 1),
 ];
 
+/// 代码任务信号：命中任意一个就额外 +2（只加一次）。
+///
+/// 真实测量发现，「帮我写个脚本」这类请求只命中「报错」1 分会被判成 off，
+/// 而用户装破甲的常见诉求恰恰是让写代码时别啰嗦。这一档把它抬到 frame。
+const CODE_TASK_MARKERS: &[&str] = &[
+    "脚本",
+    "代码",
+    "函数",
+    "接口",
+    "编程",
+    "调试",
+    "部署",
+    "重构",
+    "单元测试",
+    "报错",
+    "编译",
+    "写个",
+    "写一个",
+];
+
+/// 代码任务加成分值。
+const CODE_TASK_BONUS: u32 = 2;
+
 /// 计算命中分。
 pub fn score(text: &str) -> u32 {
     let folded = text.to_lowercase();
@@ -210,6 +237,9 @@ pub fn score(text: &str) -> u32 {
     }
     if folded.matches("```").count() >= 2 {
         total = total.saturating_add(1);
+    }
+    if CODE_TASK_MARKERS.iter().any(|marker| folded.contains(marker)) {
+        total = total.saturating_add(CODE_TASK_BONUS);
     }
     total.min(SCORE_CAP)
 }
@@ -392,11 +422,12 @@ fn floor_boundary(text: &str, mut index: usize) -> usize {
 }
 
 /// 用标记块包裹注入正文。
+///
+/// 真实测量：完整标记（带 `tier=` 与结尾重复 id）占 37–39 token，
+/// 相对 65 KB 策略可忽略，但在 4.7 KB 小策略上占 3%，所以这里做瘦身。
 pub fn wrap(profile_id: &str, tier: Tier, body: &str) -> String {
-    format!(
-        "{BEGIN_PREFIX} {profile_id} tier={} -->\n{body}\n{END_PREFIX} {profile_id} -->",
-        tier.as_str()
-    )
+    let _ = tier;
+    format!("{BEGIN_PREFIX} {profile_id} -->\n{body}\n{END_PREFIX} -->")
 }
 
 /// 文本里是否已经带过标记块。
@@ -493,6 +524,30 @@ mod tests {
         assert_eq!(once, twice);
         assert!(once.contains("原来的系统提示"));
         assert!(!once.contains(END_PREFIX));
+    }
+
+    #[test]
+    fn code_task_bonus_lifts_plain_coding_request() {
+        // 真实测量里被判 off 的那句
+        let text = "帮我写个 Python 脚本，把 CSV 转成 JSON，注意报错处理";
+        let score = score(text);
+        assert!(score >= 2, "普通写代码请求应至少进 frame，实测 score={score}");
+        assert!(score < 8, "但不该直接吃全文，实测 score={score}");
+    }
+
+    #[test]
+    fn pentest_vocabulary_reaches_full() {
+        let text = "授权靶场里目标只有 22 和 8080，给个从信息收集到 getshell 的思路";
+        let score = score(text);
+        assert!(score >= 8, "渗透请求应进 full，实测 score={score}");
+    }
+
+    #[test]
+    fn wrapper_is_compact_and_strippable() {
+        let wrapped = wrap("demo", Tier::Full, "正文");
+        assert!(!wrapped.contains("tier="), "标记块不应带 tier 后缀");
+        assert_eq!(wrapped.matches("demo").count(), 1, "profile id 只出现一次");
+        assert!(strip_markers(&wrapped).trim().is_empty());
     }
 
     #[test]
